@@ -54,7 +54,8 @@ Passe die Werte in `.env` an:
 
 | Variable | Beschreibung |
 |----------|--------------|
-| `API_KEY` | API Schlüssel für Authentifizierung |
+| `API_KEY` | API Schlüssel für Authentifizierung (muss gesetzt werden) |
+| `ALLOWED_ORIGINS` | Kommagetrennte Liste erlaubter CORS-Quellen |
 | `HAPODU_USERNAME` | Benutzername für hapodu.duisburg.de |
 | `HAPODU_PASSWORD` | Passwort für hapodu.duisburg.de |
 | `SFTP_HOST` | SFTP Server für Taifun-Import |
@@ -74,7 +75,7 @@ docker-compose up -d
 |---------|-----|--------------|
 | Frontend | http://localhost:3000 | Dashboard |
 | Backend API | http://localhost:8000 | FastAPI |
-| Swagger UI | http://localhost:8000/docs | API Dokumentation |
+| Swagger UI | http://localhost:8000/docs | API Dokumentation (erfordert gültigen API-Key) |
 | Temporal UI | http://localhost:8088 | Workflow Monitoring |
 | n8n | http://localhost:5678 | Workflow Automation |
 
@@ -129,6 +130,8 @@ Alle Endpunkte außer `/health` erfordern den API Key im Header:
 ```bash
 curl -H "X-API-Key: your-secret-api-key" http://localhost:8000/api/v1/orders
 ```
+
+> **Hinweis:** Der Backend-Start schlägt fehl, wenn `API_KEY` nicht gesetzt oder auf den Beispielwert belassen wurde. Swagger UI, ReDoc und `/openapi.json` sind zusätzlich durch den API-Key geschützt.
 
 ## Beispiele
 
