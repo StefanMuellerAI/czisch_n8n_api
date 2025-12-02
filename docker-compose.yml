@@ -1,0 +1,127 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: czisch_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-czisch}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-czisch_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-czisch_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-czisch} -d ${POSTGRES_DB:-czisch_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  temporal:
+    image: temporalio/auto-setup:1.22.4
+    container_name: czisch_temporal
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-czisch}
+      - POSTGRES_PWD=${POSTGRES_PASSWORD:-czisch_secret}
+      - POSTGRES_SEEDS=postgres
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    ports:
+      - "7233:7233"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./temporal-config:/etc/temporal/config/dynamicconfig
+
+  temporal-ui:
+    image: temporalio/ui:2.21.4
+    container_name: czisch_temporal_ui
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    ports:
+      - "8088:8080"
+    depends_on:
+      - temporal
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: czisch_backend
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-czisch}:${POSTGRES_PASSWORD:-czisch_secret}@postgres:5432/${POSTGRES_DB:-czisch_db}
+      API_KEY: ${API_KEY:-your-secret-api-key}
+      HAPODU_USERNAME: ${HAPODU_USERNAME}
+      HAPODU_PASSWORD: ${HAPODU_PASSWORD}
+      TEMPORAL_HOST: temporal:7233
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/app:/app/app
+
+  temporal-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: czisch_temporal_worker
+    command: python -m app.temporal.worker
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-czisch}:${POSTGRES_PASSWORD:-czisch_secret}@postgres:5432/${POSTGRES_DB:-czisch_db}
+      TEMPORAL_HOST: temporal:7233
+      PYTHONUNBUFFERED: "1"
+      # Hapodu Credentials (needed for scraping)
+      HAPODU_USERNAME: ${HAPODU_USERNAME}
+      HAPODU_PASSWORD: ${HAPODU_PASSWORD}
+      HAPODU_BASE_URL: ${HAPODU_BASE_URL:-https://hapodu.duisburg.de/risource}
+      # SFTP Configuration
+      SFTP_HOST: ${SFTP_HOST}
+      SFTP_PORT: ${SFTP_PORT:-22}
+      SFTP_USERNAME: ${SFTP_USERNAME}
+      SFTP_PASSWORD: ${SFTP_PASSWORD}
+      SFTP_REMOTE_PATH: ${SFTP_REMOTE_PATH:-/import/orders}
+    depends_on:
+      - temporal
+      - postgres
+    volumes:
+      - ./backend/app:/app/app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: czisch_frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: czisch_n8n
+    environment:
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=Europe/Berlin
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+volumes:
+  postgres_data:
+  n8n_data:

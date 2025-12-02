@@ -1,0 +1,23 @@
+# Temporal dynamic configuration for development
+# This file is required for the Temporal server to start properly
+
+frontend.enableClientVersionCheck:
+  - value: true
+    constraints: {}
+
+history.persistenceMaxQPS:
+  - value: 3000
+    constraints: {}
+
+frontend.persistenceMaxQPS:
+  - value: 3000
+    constraints: {}
+
+matching.numTaskqueueReadPartitions:
+  - value: 5
+    constraints: {}
+
+matching.numTaskqueueWritePartitions:
+  - value: 5
+    constraints: {}
+
