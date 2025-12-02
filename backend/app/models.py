@@ -13,7 +13,12 @@ class Order(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     order_id = Column(String(255), unique=True, nullable=False, index=True)
     status = Column(
-        SAEnum(OrderStatus, name="order_status", native_enum=False),
+        SAEnum(
+            OrderStatus,
+            name="order_status",
+            native_enum=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         default=OrderStatus.PENDING,
         nullable=False,
     )
@@ -70,7 +75,12 @@ class Call(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     call_id = Column(String(255), unique=True, nullable=False, index=True)  # Generated from timestamp + from_number
     state = Column(
-        SAEnum(CallState, name="call_state", native_enum=False),
+        SAEnum(
+            CallState,
+            name="call_state",
+            native_enum=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         nullable=False,
     )
     from_number = Column(String(50), nullable=False)
@@ -79,7 +89,12 @@ class Call(Base):
     caller_name = Column(String(255), nullable=True)
     call_timestamp = Column(DateTime(timezone=True), nullable=False)
     status = Column(
-        SAEnum(CallStatus, name="call_status", native_enum=False),
+        SAEnum(
+            CallStatus,
+            name="call_status",
+            native_enum=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         default=CallStatus.RECEIVED,
         nullable=False,
     )
@@ -109,3 +124,16 @@ class CallExport(Base):
     
     def __repr__(self):
         return f"<CallExport(id={self.id}, call_id={self.call_id}, type='{self.export_type}')>"
+
+
+class ScrapeConfig(Base):
+    """Configuration for scraping (singleton - only one row)."""
+    
+    __tablename__ = "scrape_config"
+    
+    id = Column(Integer, primary_key=True, default=1)
+    custom_order_list_url = Column(String(1024), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    
+    def __repr__(self):
+        return f"<ScrapeConfig(url='{self.custom_order_list_url}')>"

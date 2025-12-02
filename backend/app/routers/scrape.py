@@ -6,11 +6,13 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import verify_api_key
 from app.enums import OrderStatus
-from app.models import Order, OrderExport
+from app.models import Order, OrderExport, ScrapeConfig
 from app.schemas import (
     ScrapeRequest,
     ScrapeErrorResponse,
-    OrderExportResponse
+    OrderExportResponse,
+    ScrapeConfigResponse,
+    ScrapeConfigUpdate
 )
 from app.temporal.client import TemporalConnectionError, WorkflowOperationError
 
@@ -461,3 +463,71 @@ async def trigger_all_uploads(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to trigger uploads: {str(e)}"
         )
+
+
+# ==================== SCRAPE CONFIG ENDPOINTS ====================
+
+@router.get(
+    "/scrape/config",
+    response_model=ScrapeConfigResponse,
+    dependencies=[Depends(verify_api_key)]
+)
+async def get_scrape_config(
+    db: Session = Depends(get_db)
+) -> ScrapeConfigResponse:
+    """
+    Get the current scrape configuration (custom URL for automatic scraping).
+    
+    Requires API key authentication via X-API-Key header.
+    """
+    config = db.query(ScrapeConfig).filter(ScrapeConfig.id == 1).first()
+    
+    if config is None:
+        return ScrapeConfigResponse(custom_order_list_url=None, updated_at=None)
+    
+    return ScrapeConfigResponse(
+        custom_order_list_url=config.custom_order_list_url,
+        updated_at=config.updated_at
+    )
+
+
+@router.put(
+    "/scrape/config",
+    response_model=ScrapeConfigResponse,
+    dependencies=[Depends(verify_api_key)]
+)
+async def update_scrape_config(
+    config_data: ScrapeConfigUpdate,
+    db: Session = Depends(get_db)
+) -> ScrapeConfigResponse:
+    """
+    Update the scrape configuration (custom URL for automatic scraping).
+    
+    This URL will be used by the automatic scheduled scraping.
+    Set to null or empty string to use the default URL.
+    
+    Requires API key authentication via X-API-Key header.
+    """
+    config = db.query(ScrapeConfig).filter(ScrapeConfig.id == 1).first()
+    
+    # Normalize empty strings to None
+    custom_url = config_data.custom_order_list_url
+    if custom_url is not None and custom_url.strip() == "":
+        custom_url = None
+    
+    if config is None:
+        # Create new config
+        config = ScrapeConfig(id=1, custom_order_list_url=custom_url)
+        db.add(config)
+    else:
+        config.custom_order_list_url = custom_url
+    
+    db.commit()
+    db.refresh(config)
+    
+    logger.info(f"Scrape config updated: custom_url={custom_url}")
+    
+    return ScrapeConfigResponse(
+        custom_order_list_url=config.custom_order_list_url,
+        updated_at=config.updated_at
+    )

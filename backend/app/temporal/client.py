@@ -4,7 +4,7 @@ Temporal Client for triggering workflows from the API.
 
 from dataclasses import dataclass
 from temporalio.client import Client, WorkflowExecutionStatus
-from temporalio.exceptions import WorkflowNotFoundError
+from temporalio.service import RPCError
 from app.config import get_settings
 from app.temporal.workflows import (
     ConvertXmlWorkflow,
@@ -100,12 +100,15 @@ async def get_workflow_status(workflow_id: str) -> WorkflowStatus:
             error=error
         )
 
-    except WorkflowNotFoundError:
-        return WorkflowStatus(
-            workflow_id=workflow_id,
-            status="NOT_FOUND",
-            error="Workflow not found"
-        )
+    except RPCError as e:
+        # Check if this is a "not found" error (gRPC status code 5 = NOT_FOUND)
+        if "not found" in str(e).lower() or getattr(e, 'status', None) == 5:
+            return WorkflowStatus(
+                workflow_id=workflow_id,
+                status="NOT_FOUND",
+                error="Workflow not found"
+            )
+        raise WorkflowOperationError(f"RPC error for workflow {workflow_id}: {e}") from e
     except TemporalConnectionError:
         raise
     except Exception as exc:
@@ -339,7 +342,7 @@ async def get_schedule_info() -> ScheduleInfo:
         return ScheduleInfo(exists=False)
 
 
-async def sync_scrape_schedule(times: list[tuple[int, int]]) -> bool:
+async def sync_scrape_schedule(times: list[tuple[int, int]], custom_url: str | None = None) -> bool:
     """
     Synchronize the Temporal schedule with the given times.
     
@@ -348,6 +351,7 @@ async def sync_scrape_schedule(times: list[tuple[int, int]]) -> bool:
     
     Args:
         times: List of (hour, minute) tuples for scheduled runs
+        custom_url: Optional custom URL for scraping (None = use default)
         
     Returns:
         True if successful
@@ -389,10 +393,10 @@ async def sync_scrape_schedule(times: list[tuple[int, int]]) -> bool:
         calendars=calendar_specs
     )
     
-    # Create action to start the workflow
+    # Create action to start the workflow with the custom URL
     action = ScheduleActionStartWorkflow(
         ScrapeAndProcessOrdersWorkflow.run,
-        None,  # order_list_url = None (use default)
+        custom_url,  # Pass the custom URL (or None for default)
         id=f"scheduled-scrape",
         task_queue=TASK_QUEUE
     )

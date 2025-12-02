@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth import verify_api_key
-from app.models import ScrapeSchedule
+from app.models import ScrapeSchedule, ScrapeConfig
 from app.temporal.client import TemporalConnectionError, WorkflowOperationError
 from app.schemas import (
     ScheduleCreate,
@@ -28,9 +28,13 @@ async def sync_schedule_with_temporal(db: Session):
     schedules = db.query(ScrapeSchedule).filter(ScrapeSchedule.enabled == True).all()
     times = [(s.hour, s.minute) for s in schedules]
     
+    # Get custom URL from config
+    config = db.query(ScrapeConfig).filter(ScrapeConfig.id == 1).first()
+    custom_url = config.custom_order_list_url if config else None
+    
     try:
-        await sync_scrape_schedule(times)
-        logger.info(f"Synced {len(times)} schedule times with Temporal")
+        await sync_scrape_schedule(times, custom_url)
+        logger.info(f"Synced {len(times)} schedule times with Temporal (custom_url={custom_url})")
     except TemporalConnectionError as e:
         logger.error(f"Failed to sync schedule with Temporal: {e}")
         raise

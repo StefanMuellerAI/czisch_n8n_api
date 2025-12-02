@@ -85,13 +85,13 @@ async def receive_call_event(
     # Create new call
     db_call = Call(
         call_id=call_id,
-        state=event.state,
+        state=event.state.value,  # Use .value to store lowercase string
         from_number=event.from_number,
         to_number=event.to_number,
         extension=event.extension,
         caller_name=event.caller_name,
         call_timestamp=event.timestamp,
-        status=CallStatus.RECEIVED
+        status=CallStatus.RECEIVED.value  # Use .value to store lowercase string
     )
     db.add(db_call)
     db.flush()

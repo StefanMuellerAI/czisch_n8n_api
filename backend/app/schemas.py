@@ -204,3 +204,22 @@ class CallListResponse(BaseModel):
     """Schema for list of calls response."""
     calls: list[CallResponse]
     total: int
+
+
+# Scrape Config Schemas
+class ScrapeConfigResponse(BaseModel):
+    """Schema for scrape config response."""
+    custom_order_list_url: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class ScrapeConfigUpdate(BaseModel):
+    """Schema for updating scrape config."""
+    custom_order_list_url: Optional[str] = Field(
+        None,
+        max_length=1024,
+        description="Custom URL for order list scraping (null = use default)"
+    )

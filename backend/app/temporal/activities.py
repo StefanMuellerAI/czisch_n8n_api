@@ -206,7 +206,7 @@ async def update_order_status(order_id: int, status: str) -> bool:
 
         order = db.query(Order).filter(Order.id == order_id).first()
         if order:
-            order.status = status_value
+            order.status = status_value.value  # Use .value to store lowercase string
             db.commit()
             return True
         return False
@@ -484,7 +484,7 @@ async def save_hapodu_xml(
         # Create new order
         new_order = Order(
             order_id=external_order_id,
-            status=OrderStatus.SCRAPED
+            status=OrderStatus.SCRAPED.value  # Use .value to store lowercase string
         )
         db.add(new_order)
         db.flush()
@@ -687,7 +687,7 @@ async def update_call_status(call_db_id: int, status: str) -> bool:
 
         call = db.query(Call).filter(Call.id == call_db_id).first()
         if call:
-            call.status = status_value
+            call.status = status_value.value  # Use .value to store lowercase string
             db.commit()
             return True
         return False
