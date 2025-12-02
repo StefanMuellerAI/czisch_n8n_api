@@ -114,6 +114,12 @@ export interface ScheduleCreate {
   minute: number;
 }
 
+// Scrape Config interfaces
+export interface ScrapeConfig {
+  custom_order_list_url: string | null;
+  updated_at: string | null;
+}
+
 // Call interfaces
 export interface Call {
   id: number;
@@ -438,6 +444,24 @@ class ApiClient {
   ): Promise<{ data?: { message: string }; error?: string; status: number }> {
     return this.request<{ message: string }>(`/api/v1/agfeo/calls/${id}`, {
       method: 'DELETE',
+    });
+  }
+
+  // Scrape Config API methods
+  async getScrapeConfig(): Promise<{
+    data?: ScrapeConfig;
+    error?: string;
+    status: number;
+  }> {
+    return this.request<ScrapeConfig>('/api/v1/scrape/config');
+  }
+
+  async updateScrapeConfig(
+    customUrl: string | null
+  ): Promise<{ data?: ScrapeConfig; error?: string; status: number }> {
+    return this.request<ScrapeConfig>('/api/v1/scrape/config', {
+      method: 'PUT',
+      body: JSON.stringify({ custom_order_list_url: customUrl }),
     });
   }
 }

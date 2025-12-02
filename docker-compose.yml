@@ -74,6 +74,7 @@ services:
     command: python -m app.temporal.worker
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-czisch}:${POSTGRES_PASSWORD:-czisch_secret}@postgres:5432/${POSTGRES_DB:-czisch_db}
+      API_KEY: ${API_KEY:-your-secret-api-key}
       TEMPORAL_HOST: temporal:7233
       PYTHONUNBUFFERED: "1"
       # Hapodu Credentials (needed for scraping)
@@ -96,16 +97,15 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
     container_name: czisch_frontend
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
     ports:
       - "3000:3000"
     depends_on:
       - backend
-    volumes:
-      - ./frontend/src:/app/src
-      - ./frontend/public:/app/public
+    # Production build - no volume mounts needed
+    # For development, run: cd frontend && npm run dev
 
   n8n:
     image: n8nio/n8n:latest
