@@ -5,12 +5,14 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth import verify_api_key
+from app.enums import OrderStatus
 from app.models import Order, OrderExport
 from app.schemas import (
     ScrapeRequest,
     ScrapeErrorResponse,
     OrderExportResponse
 )
+from app.temporal.client import TemporalConnectionError, WorkflowOperationError
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -41,19 +43,25 @@ async def scrape_orders(
     """
     try:
         from app.temporal.client import trigger_scrape_and_process
-        
+
         logger.info(f"Triggering scrape and process workflow with URL: {request.order_list_url}")
         workflow_id = await trigger_scrape_and_process(request.order_list_url)
-        
+
         logger.info(f"Workflow started: {workflow_id}")
-        
+
         return {
             "status": "triggered",
             "workflow_id": workflow_id,
             "message": "Scrape and process workflow started."
         }
-        
-    except Exception as e:
+
+    except TemporalConnectionError as e:
+        logger.error(f"Temporal unavailable: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Temporal connection failed. Please retry later."
+        )
+    except WorkflowOperationError as e:
         logger.error(f"Failed to trigger workflow: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -78,17 +86,23 @@ async def get_workflow_status(workflow_id: str) -> dict:
     """
     try:
         from app.temporal.client import get_workflow_status as get_status
-        
+
         status_result = await get_status(workflow_id)
-        
+
         return {
             "workflow_id": status_result.workflow_id,
             "status": status_result.status,
             "result": status_result.result,
             "error": status_result.error
         }
-        
-    except Exception as e:
+
+    except TemporalConnectionError as e:
+        logger.error(f"Temporal unavailable: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Temporal connection failed. Please retry later."
+        )
+    except WorkflowOperationError as e:
         logger.error(f"Failed to get workflow status: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -196,7 +210,13 @@ async def trigger_conversion(
             "workflow_id": workflow_id,
             "export_id": export_id
         }
-    except Exception as e:
+    except TemporalConnectionError as e:
+        logger.error(f"Temporal unavailable: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Temporal connection failed. Please retry later."
+        )
+    except WorkflowOperationError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to trigger conversion: {str(e)}"
@@ -300,7 +320,13 @@ async def trigger_all_conversions(
             "triggered_count": len(workflow_ids),
             "workflow_ids": workflow_ids
         }
-    except Exception as e:
+    except TemporalConnectionError as e:
+        logger.error(f"Temporal unavailable: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Temporal connection failed. Please retry later."
+        )
+    except WorkflowOperationError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to trigger conversions: {str(e)}"
@@ -319,7 +345,7 @@ async def get_pending_uploads(
     
     Requires API key authentication via X-API-Key header.
     """
-    pending_orders = db.query(Order).filter(Order.status == "converted").all()
+    pending_orders = db.query(Order).filter(Order.status == OrderStatus.CONVERTED).all()
     
     return {
         "pending_count": len(pending_orders),
@@ -378,7 +404,13 @@ async def trigger_upload(
             "workflow_id": workflow_id,
             "order_id": order_id
         }
-    except Exception as e:
+    except TemporalConnectionError as e:
+        logger.error(f"Temporal unavailable: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Temporal connection failed. Please retry later."
+        )
+    except WorkflowOperationError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to trigger upload: {str(e)}"
@@ -397,7 +429,7 @@ async def trigger_all_uploads(
     
     Requires API key authentication via X-API-Key header.
     """
-    pending_orders = db.query(Order).filter(Order.status == "converted").all()
+    pending_orders = db.query(Order).filter(Order.status == OrderStatus.CONVERTED).all()
     
     if not pending_orders:
         return {
@@ -411,14 +443,20 @@ async def trigger_all_uploads(
         from app.temporal.client import trigger_batch_upload
         order_ids = [o.id for o in pending_orders]
         workflow_ids = await trigger_batch_upload(order_ids)
-        
+
         return {
             "status": "triggered",
             "message": f"Triggered {len(workflow_ids)} uploads",
             "triggered_count": len(workflow_ids),
             "workflow_ids": workflow_ids
         }
-    except Exception as e:
+    except TemporalConnectionError as e:
+        logger.error(f"Temporal unavailable: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Temporal connection failed. Please retry later."
+        )
+    except WorkflowOperationError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to trigger uploads: {str(e)}"

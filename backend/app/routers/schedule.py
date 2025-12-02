@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth import verify_api_key
 from app.models import ScrapeSchedule
+from app.temporal.client import TemporalConnectionError, WorkflowOperationError
 from app.schemas import (
     ScheduleCreate,
     ScheduleResponse,
@@ -30,9 +31,12 @@ async def sync_schedule_with_temporal(db: Session):
     try:
         await sync_scrape_schedule(times)
         logger.info(f"Synced {len(times)} schedule times with Temporal")
-    except Exception as e:
+    except TemporalConnectionError as e:
         logger.error(f"Failed to sync schedule with Temporal: {e}")
         raise
+    except Exception as e:
+        logger.error(f"Failed to sync schedule with Temporal: {e}")
+        raise WorkflowOperationError(str(e)) from e
 
 
 @router.get(
@@ -55,7 +59,20 @@ async def list_schedules(
     ).all()
     
     # Get Temporal schedule status
-    schedule_info = await get_schedule_info()
+    try:
+        schedule_info = await get_schedule_info()
+    except TemporalConnectionError as exc:
+        logger.error(f"Temporal unavailable when fetching schedule info: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Temporal connection failed. Please retry later."
+        )
+    except WorkflowOperationError as exc:
+        logger.error(f"Failed to load schedule info: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to read schedule state from Temporal."
+        )
     
     schedule_responses = []
     for s in schedules:
@@ -182,13 +199,19 @@ async def sync_schedules(
     """
     try:
         await sync_schedule_with_temporal(db)
-        
+
         schedules = db.query(ScrapeSchedule).filter(ScrapeSchedule.enabled == True).all()
-        
+
         return MessageResponse(
             message=f"Synced {len(schedules)} schedule(s) with Temporal"
         )
-    except Exception as e:
+    except TemporalConnectionError as e:
+        logger.error(f"Temporal unavailable when syncing schedules: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Temporal connection failed. Please retry later."
+        )
+    except WorkflowOperationError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to sync: {str(e)}"

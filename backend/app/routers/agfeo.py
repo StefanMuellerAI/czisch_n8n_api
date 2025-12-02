@@ -5,11 +5,14 @@ API Router for AGFEO phone events.
 import json
 import logging
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth import verify_api_key
+from app.enums import CallStatus
 from app.models import Call, CallExport
 from app.schemas import (
     CallEventCreate,
@@ -22,6 +25,7 @@ from app.schemas import (
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+MAX_PAGE_SIZE = 100
 
 
 def generate_call_id(from_number: str, timestamp: datetime) -> str:
@@ -87,7 +91,7 @@ async def receive_call_event(
         extension=event.extension,
         caller_name=event.caller_name,
         call_timestamp=event.timestamp,
-        status="received"
+        status=CallStatus.RECEIVED
     )
     db.add(db_call)
     db.flush()
@@ -127,8 +131,8 @@ async def receive_call_event(
     dependencies=[Depends(verify_api_key)]
 )
 async def list_calls(
-    skip: int = 0,
-    limit: int = 10,
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 10,
     db: Session = Depends(get_db)
 ) -> CallListResponse:
     """

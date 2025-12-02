@@ -10,6 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from app.config import get_settings
 from app.models import Order, OrderExport
 from app.temporal.converter import convert_sap_to_taifun
+from app.enums import OrderStatus, CallStatus
 
 settings = get_settings()
 
@@ -194,12 +195,18 @@ async def update_order_status(order_id: int, status: str) -> bool:
     from app.models import Order
     
     activity.logger.info(f"Updating order {order_id} status to {status}")
-    
+
     db = get_db_session()
     try:
+        try:
+            status_value = OrderStatus(status)
+        except ValueError:
+            activity.logger.error(f"Invalid order status '{status}' for order {order_id}")
+            return False
+
         order = db.query(Order).filter(Order.id == order_id).first()
         if order:
-            order.status = status
+            order.status = status_value
             db.commit()
             return True
         return False
@@ -477,7 +484,7 @@ async def save_hapodu_xml(
         # Create new order
         new_order = Order(
             order_id=external_order_id,
-            status="scraped"
+            status=OrderStatus.SCRAPED
         )
         db.add(new_order)
         db.flush()
@@ -669,12 +676,18 @@ async def update_call_status(call_db_id: int, status: str) -> bool:
     from app.models import Call
     
     activity.logger.info(f"Updating call {call_db_id} status to {status}")
-    
+
     db = get_db_session()
     try:
+        try:
+            status_value = CallStatus(status)
+        except ValueError:
+            activity.logger.error(f"Invalid call status '{status}' for call {call_db_id}")
+            return False
+
         call = db.query(Call).filter(Call.id == call_db_id).first()
         if call:
-            call.status = status
+            call.status = status_value
             db.commit()
             return True
         return False

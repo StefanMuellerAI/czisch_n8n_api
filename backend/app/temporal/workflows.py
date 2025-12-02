@@ -5,6 +5,7 @@ Temporal Workflows for scraping, XML conversion and SFTP upload.
 from datetime import timedelta
 from temporalio import workflow
 from temporalio.common import RetryPolicy
+from app.enums import OrderStatus, CallStatus
 
 with workflow.unsafe.imports_passed_through():
     from app.temporal.activities import (
@@ -125,7 +126,7 @@ class ConvertXmlWorkflow:
                     "hapodu_export_id": export_id,
                     "taifun_export_id": taifun_export_id,
                     "remote_path": upload_result.remote_path,
-                    "status": "sent"
+                    "status": OrderStatus.SENT.value
                 }
             else:
                 workflow.logger.warning(f"Upload failed: {upload_result.error}")
@@ -134,7 +135,7 @@ class ConvertXmlWorkflow:
                     "hapodu_export_id": export_id,
                     "taifun_export_id": taifun_export_id,
                     "upload_error": upload_result.error,
-                    "status": "converted"
+                    "status": OrderStatus.CONVERTED.value
                 }
             
         except Exception as e:
@@ -202,7 +203,7 @@ class UploadXmlWorkflow:
                 # Step 3: Update order status to sent
                 await workflow.execute_activity(
                     update_order_status,
-                    args=[order_db_id, "sent"],
+                    args=[order_db_id, OrderStatus.SENT.value],
                     start_to_close_timeout=timedelta(seconds=10)
                 )
                 
@@ -212,7 +213,7 @@ class UploadXmlWorkflow:
                     "success": True,
                     "order_id": order_db_id,
                     "remote_path": upload_result.remote_path,
-                    "status": "sent"
+                    "status": OrderStatus.SENT.value
                 }
             else:
                 workflow.logger.error(f"Upload failed: {upload_result.error}")
@@ -352,7 +353,7 @@ class ProcessOrderWorkflow:
                 # Step 7: Update order status to sent
                 await workflow.execute_activity(
                     update_order_status,
-                    args=[order_db_id, "sent"],
+                    args=[order_db_id, OrderStatus.SENT.value],
                     start_to_close_timeout=timedelta(seconds=10)
                 )
                 
@@ -366,7 +367,7 @@ class ProcessOrderWorkflow:
                     "hapodu_export_id": hapodu_export_id,
                     "taifun_export_id": taifun_export_id,
                     "remote_path": upload_result.remote_path,
-                    "status": "sent"
+                    "status": OrderStatus.SENT.value
                 }
             else:
                 workflow.logger.warning(f"Upload failed: {upload_result.error}")
@@ -378,7 +379,7 @@ class ProcessOrderWorkflow:
                     "hapodu_export_id": hapodu_export_id,
                     "taifun_export_id": taifun_export_id,
                     "upload_error": upload_result.error,
-                    "status": "converted"
+                    "status": OrderStatus.CONVERTED.value
                 }
                 
         except Exception as e:
@@ -609,7 +610,7 @@ class ProcessCallWorkflow:
                     "call_db_id": call_db_id,
                     "call_id": call_id,
                     "taifun_export_id": taifun_export_id,
-                    "status": "converted",
+                    "status": CallStatus.CONVERTED.value,
                     "error": f"Upload failed: {upload_result.error}"
                 }
             
@@ -617,7 +618,7 @@ class ProcessCallWorkflow:
             workflow.logger.info("Step 6: Updating call status to sent...")
             await workflow.execute_activity(
                 update_call_status,
-                args=[call_db_id, "sent"],
+                args=[call_db_id, CallStatus.SENT.value],
                 start_to_close_timeout=timedelta(seconds=10)
             )
             
@@ -629,7 +630,7 @@ class ProcessCallWorkflow:
                 "call_id": call_id,
                 "taifun_export_id": taifun_export_id,
                 "remote_path": upload_result.remote_path,
-                "status": "sent"
+                "status": CallStatus.SENT.value
             }
             
         except Exception as e:

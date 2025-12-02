@@ -1,9 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
 from app.auth import verify_api_key
+from app.enums import OrderStatus
 from app.models import Order, OrderExport
 from app.schemas import (
     OrderCreate,
@@ -15,6 +18,7 @@ from app.schemas import (
 )
 
 router = APIRouter()
+MAX_PAGE_SIZE = 100
 
 
 @router.post(
@@ -57,8 +61,8 @@ async def create_order(
     dependencies=[Depends(verify_api_key)]
 )
 async def list_orders(
-    skip: int = 0,
-    limit: int = 10,
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 10,
     db: Session = Depends(get_db)
 ) -> OrderListResponse:
     """
