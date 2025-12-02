@@ -1,4 +1,4 @@
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 from typing import Optional
@@ -8,10 +8,10 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     
     # Database
-    database_url: str = "postgresql://czisch:czisch_secret@localhost:5432/czisch_db"
+    database_url: str = Field(..., env="DATABASE_URL", min_length=1)
 
     # API Security
-    api_key: str = "your-secret-api-key"
+    api_key: str = Field(..., env="API_KEY", min_length=1)
     allowed_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
     
     # App Info

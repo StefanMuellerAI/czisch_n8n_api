@@ -4,6 +4,7 @@ Temporal Client for triggering workflows from the API.
 
 from dataclasses import dataclass
 from temporalio.client import Client, WorkflowExecutionStatus
+from temporalio.exceptions import WorkflowNotFoundError
 from app.config import get_settings
 from app.temporal.workflows import (
     ConvertXmlWorkflow,
@@ -20,6 +21,18 @@ TASK_QUEUE = "xml-conversion-queue"
 _client: Client | None = None
 
 
+class TemporalClientError(RuntimeError):
+    """Base exception for Temporal client issues."""
+
+
+class TemporalConnectionError(TemporalClientError):
+    """Raised when the Temporal cluster cannot be reached."""
+
+
+class WorkflowOperationError(TemporalClientError):
+    """Raised when workflow interaction fails unexpectedly."""
+
+
 @dataclass
 class WorkflowStatus:
     """Status of a workflow execution."""
@@ -33,7 +46,12 @@ async def get_temporal_client() -> Client:
     """Get or create Temporal client."""
     global _client
     if _client is None:
-        _client = await Client.connect(TEMPORAL_HOST)
+        try:
+            _client = await Client.connect(TEMPORAL_HOST)
+        except Exception as exc:
+            raise TemporalConnectionError(
+                f"Failed to connect to Temporal at {TEMPORAL_HOST}: {exc}"
+            ) from exc
     return _client
 
 
@@ -52,7 +70,7 @@ async def get_workflow_status(workflow_id: str) -> WorkflowStatus:
     try:
         handle = client.get_workflow_handle(workflow_id)
         describe = await handle.describe()
-        
+
         status_map = {
             WorkflowExecutionStatus.RUNNING: "RUNNING",
             WorkflowExecutionStatus.COMPLETED: "COMPLETED",
@@ -61,12 +79,12 @@ async def get_workflow_status(workflow_id: str) -> WorkflowStatus:
             WorkflowExecutionStatus.TERMINATED: "TERMINATED",
             WorkflowExecutionStatus.TIMED_OUT: "TIMED_OUT",
         }
-        
+
         status = status_map.get(describe.status, "UNKNOWN")
-        
+
         result = None
         error = None
-        
+
         if status == "COMPLETED":
             try:
                 result = await handle.result()
@@ -74,20 +92,24 @@ async def get_workflow_status(workflow_id: str) -> WorkflowStatus:
                 error = str(e)
         elif status == "FAILED":
             error = "Workflow failed"
-        
+
         return WorkflowStatus(
             workflow_id=workflow_id,
             status=status,
             result=result,
             error=error
         )
-        
-    except Exception as e:
+
+    except WorkflowNotFoundError:
         return WorkflowStatus(
             workflow_id=workflow_id,
             status="NOT_FOUND",
-            error=str(e)
+            error="Workflow not found"
         )
+    except TemporalConnectionError:
+        raise
+    except Exception as exc:
+        raise WorkflowOperationError(f"Failed to describe workflow {workflow_id}: {exc}") from exc
 
 
 # ==================== NEW END-TO-END WORKFLOW TRIGGERS ====================
@@ -110,17 +132,20 @@ async def trigger_scrape_and_process(order_list_url: str | None = None) -> str:
     import uuid
     
     client = await get_temporal_client()
-    
+
     # Use unique ID with timestamp to allow multiple runs
     workflow_id = f"scrape-and-process-{uuid.uuid4().hex[:8]}"
-    
-    handle = await client.start_workflow(
-        ScrapeAndProcessOrdersWorkflow.run,
-        order_list_url,
-        id=workflow_id,
-        task_queue=TASK_QUEUE
-    )
-    
+
+    try:
+        handle = await client.start_workflow(
+            ScrapeAndProcessOrdersWorkflow.run,
+            order_list_url,
+            id=workflow_id,
+            task_queue=TASK_QUEUE
+        )
+    except Exception as exc:
+        raise WorkflowOperationError(f"Failed to start scrape workflow: {exc}") from exc
+
     return handle.id
 
 
@@ -144,13 +169,16 @@ async def trigger_process_single_order(
     
     workflow_id = f"process-order-{external_order_id}"
     
-    handle = await client.start_workflow(
-        ProcessOrderWorkflow.run,
-        args=[belnr, external_order_id, detail_url],
-        id=workflow_id,
-        task_queue=TASK_QUEUE
-    )
-    
+    try:
+        handle = await client.start_workflow(
+            ProcessOrderWorkflow.run,
+            args=[belnr, external_order_id, detail_url],
+            id=workflow_id,
+            task_queue=TASK_QUEUE
+        )
+    except Exception as exc:
+        raise WorkflowOperationError(f"Failed to start processing workflow: {exc}") from exc
+
     return handle.id
 
 
@@ -168,13 +196,16 @@ async def trigger_call_processing(call_db_id: int) -> str:
     
     workflow_id = f"process-call-{call_db_id}"
     
-    handle = await client.start_workflow(
-        ProcessCallWorkflow.run,
-        call_db_id,
-        id=workflow_id,
-        task_queue=TASK_QUEUE
-    )
-    
+    try:
+        handle = await client.start_workflow(
+            ProcessCallWorkflow.run,
+            call_db_id,
+            id=workflow_id,
+            task_queue=TASK_QUEUE
+        )
+    except Exception as exc:
+        raise WorkflowOperationError(f"Failed to start call processing workflow: {exc}") from exc
+
     return handle.id
 
 
@@ -197,12 +228,15 @@ async def trigger_xml_conversion(export_id: int) -> str:
     
     workflow_id = f"convert-xml-{export_id}"
     
-    handle = await client.start_workflow(
-        ConvertXmlWorkflow.run,
-        export_id,
-        id=workflow_id,
-        task_queue=TASK_QUEUE
-    )
+    try:
+        handle = await client.start_workflow(
+            ConvertXmlWorkflow.run,
+            export_id,
+            id=workflow_id,
+            task_queue=TASK_QUEUE
+        )
+    except Exception as exc:
+        raise WorkflowOperationError(f"Failed to start conversion workflow: {exc}") from exc
     
     return handle.id
 
@@ -237,16 +271,19 @@ async def trigger_sftp_upload(order_db_id: int) -> str:
         Workflow ID
     """
     client = await get_temporal_client()
-    
+
     workflow_id = f"upload-xml-{order_db_id}"
-    
-    handle = await client.start_workflow(
-        UploadXmlWorkflow.run,
-        order_db_id,
-        id=workflow_id,
-        task_queue=TASK_QUEUE
-    )
-    
+
+    try:
+        handle = await client.start_workflow(
+            UploadXmlWorkflow.run,
+            order_db_id,
+            id=workflow_id,
+            task_queue=TASK_QUEUE
+        )
+    except Exception as exc:
+        raise WorkflowOperationError(f"Failed to start upload workflow: {exc}") from exc
+
     return handle.id
 
 

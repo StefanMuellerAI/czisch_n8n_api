@@ -2,11 +2,15 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional
 
+from pydantic import BaseModel, Field
+
+from app.enums import OrderStatus, CallStatus, CallState
+
 
 class OrderBase(BaseModel):
     """Base schema for Order."""
     order_id: str = Field(..., min_length=1, max_length=255, description="Unique order identifier")
-    status: str = Field(default="pending", max_length=50, description="Order status")
+    status: OrderStatus = Field(default=OrderStatus.PENDING, description="Order status")
 
 
 class OrderCreate(OrderBase):
@@ -17,7 +21,7 @@ class OrderCreate(OrderBase):
 class OrderUpdate(BaseModel):
     """Schema for updating an order."""
     order_id: Optional[str] = Field(None, min_length=1, max_length=255, description="Unique order identifier")
-    status: Optional[str] = Field(None, max_length=50, description="Order status")
+    status: Optional[OrderStatus] = Field(None, description="Order status")
 
 
 class OrderExportResponse(BaseModel):
@@ -74,6 +78,8 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     database: str
+    temporal: str
+    sftp: str
 
 
 class MessageResponse(BaseModel):
@@ -148,7 +154,7 @@ class ScheduleListResponse(BaseModel):
 # AGFEO Call Schemas
 class CallEventCreate(BaseModel):
     """Schema for incoming AGFEO call event."""
-    state: str = Field(..., description="Call state: ringing, answered, ended")
+    state: CallState = Field(..., description="Call state: ringing, answered, ended")
     from_number: str = Field(..., alias="from", description="Caller phone number")
     to_number: str = Field(..., alias="to", description="Called phone number")
     extension: Optional[str] = Field(None, description="Extension number")
@@ -175,13 +181,13 @@ class CallResponse(BaseModel):
     """Schema for call response."""
     id: int
     call_id: str
-    state: str
+    state: CallState
     from_number: str
     to_number: str
     extension: Optional[str]
     caller_name: Optional[str]
     call_timestamp: datetime
-    status: str
+    status: CallStatus
     created_at: datetime
     updated_at: datetime
     

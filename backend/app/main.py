@@ -1,4 +1,8 @@
-from fastapi import Depends, FastAPI
+import logging
+import time
+import uuid
+
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import (
     get_redoc_html,
@@ -15,13 +19,20 @@ from app.routers import health, orders, scrape, schedule, agfeo
 from app.auth import verify_api_key
 
 settings = get_settings()
+logger = logging.getLogger("app")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events."""
-    if settings.api_key == "your-secret-api-key":
+    if not settings.api_key:
         raise RuntimeError("API key must be configured via the API_KEY environment variable.")
+    if not settings.database_url:
+        raise RuntimeError("Database URL must be configured via the DATABASE_URL environment variable.")
     # Startup: Create database tables
     Base.metadata.create_all(bind=engine)
     yield
@@ -46,6 +57,45 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+    start_time = time.perf_counter()
+
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        logger.exception(
+            "Request %s %s failed after %.2f ms [request_id=%s]",
+            request.method,
+            request.url.path,
+            duration_ms,
+            request_id,
+        )
+        raise
+
+    duration_ms = (time.perf_counter() - start_time) * 1000
+    response.headers["X-Request-ID"] = request_id
+
+    log_method = logger.info
+    if response.status_code >= 500:
+        log_method = logger.error
+    elif response.status_code >= 400:
+        log_method = logger.warning
+
+    log_method(
+        "Request %s %s completed with %s in %.2f ms [request_id=%s]",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+        request_id,
+    )
+
+    return response
 
 # Include routers
 app.include_router(health.router, tags=["Health"])

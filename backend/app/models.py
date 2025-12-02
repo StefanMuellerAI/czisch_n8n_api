@@ -1,7 +1,8 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Boolean, Enum as SAEnum
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
+from app.enums import OrderStatus, CallStatus, CallState
 
 
 class Order(Base):
@@ -11,7 +12,11 @@ class Order(Base):
     
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     order_id = Column(String(255), unique=True, nullable=False, index=True)
-    status = Column(String(50), default="pending", nullable=False)
+    status = Column(
+        SAEnum(OrderStatus, name="order_status", native_enum=False),
+        default=OrderStatus.PENDING,
+        nullable=False,
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     
@@ -64,13 +69,20 @@ class Call(Base):
     
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     call_id = Column(String(255), unique=True, nullable=False, index=True)  # Generated from timestamp + from_number
-    state = Column(String(50), nullable=False)  # ringing, answered, ended
+    state = Column(
+        SAEnum(CallState, name="call_state", native_enum=False),
+        nullable=False,
+    )
     from_number = Column(String(50), nullable=False)
     to_number = Column(String(50), nullable=False)
     extension = Column(String(10), nullable=True)
     caller_name = Column(String(255), nullable=True)
     call_timestamp = Column(DateTime(timezone=True), nullable=False)
-    status = Column(String(50), default="received", nullable=False)  # received, converted
+    status = Column(
+        SAEnum(CallStatus, name="call_status", native_enum=False),
+        default=CallStatus.RECEIVED,
+        nullable=False,
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     
